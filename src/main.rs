@@ -1,19 +1,17 @@
+#[allow(dead_code)]
 #[macro_use]
 extern crate lazy_static;
 extern crate clap;
 
 use clap::{App, Arg, SubCommand};
-use git2::{self, Repository};
-use git2::{Oid, Signature, Time};
+use git2::{self, Oid, Repository, Signature, Time};
 use regex::Regex;
-use std::fs::File;
-use std::io::Cursor;
-use std::io::{BufRead, BufReader, ErrorKind};
-use std::iter;
-use std::path::Path;
 use rustyline;
 
-//#[derive(Debug)]
+use std::fs::File;
+use std::io::{BufRead, BufReader, ErrorKind};
+use std::path::Path;
+
 struct ParsedReflogEntry {
     id_new: Oid,
     id_old: Oid,
@@ -105,7 +103,6 @@ fn parse_reflog(
     let gitrefpath = gitpath.join(Path::new("logs"));
     let refpath = gitrefpath.join(refname);
 
-    //let file = std_io_err_to_git_err()?;
     match File::open(refpath) {
         Ok(file) => {
             let reader = BufReader::new(file);
@@ -118,48 +115,59 @@ fn parse_reflog(
     }
 }
 
-fn prompt_for_index(num_refs : usize )
--> std::option::Option<usize> {
+fn prompt_for_index(num_refs: usize) -> std::option::Option<usize> {
     let mut rl = rustyline::Editor::<()>::new();
     let readline = rl.readline(">> ");
     match readline {
-        Ok(line) =>
-        {
-            match line.parse::<usize>()
-            {
-                Ok(index) if index < num_refs =>
-                {
-                    Some(index)
-                },
-                Ok(index) =>
-                {
-                    println!("Number {} not in range, it has to be less than {}", index, num_refs);
+        Ok(line) => {
+            if line.len() == 0 {
+                if num_refs != 0 {
+                    Some(0)
+                } else {
                     None
                 }
-                Err(_) =>
-                {
-                    println!("Could not parse number");
-                    None
+            } else {
+                match line.parse::<usize>() {
+                    Ok(index) if index < num_refs => Some(index),
+                    Ok(index) => {
+                        println!(
+                            "Number {} not in range, it has to be less than {}",
+                            index, num_refs
+                        );
+                        None
+                    }
+                    Err(_) => {
+                        println!("Could not parse number");
+                        None
+                    }
                 }
             }
         }
-        Err(_) => {
-            None
-        }
+        Err(_) => None,
     }
 }
 
-fn handle_logrefs(repo: Repository, index: Option<usize>, no_remotes : bool, no_tags : bool ) -> Result<(), git2::Error> {
+fn handle_logrefs(
+    repo: Repository,
+    index: Option<usize>,
+    no_remotes: bool,
+    no_tags: bool,
+) -> Result<(), git2::Error> {
     let mut commitrefs: Vec<CommitRef> = Vec::with_capacity(repo.references()?.names().count());
+    let head = repo.head()?;
+    let head_name = if !repo.head_detached()? {
+        head.name()
+    } else {
+        None
+    };
     for reference_maybe in repo.references()? {
         let reference = reference_maybe?;
-        if no_remotes && reference.is_remote() {
+        if (no_remotes && reference.is_remote())
+            || (no_tags && reference.is_tag())
+            || (head_name == reference.name())
+        {
             continue;
         }
-        if no_tags && reference.is_tag() {
-            continue;
-        }
-
         if let Some(entries) = parse_reflog(
             &repo,
             reference.name().ok_or(git2::Error::new(
@@ -169,8 +177,7 @@ fn handle_logrefs(repo: Repository, index: Option<usize>, no_remotes : bool, no_
             ))?,
         )? {
             // Only take the last (and most recent) entry
-            if let Some(entry_res) = entries.into_iter().last()
-            {
+            if let Some(entry_res) = entries.into_iter().last() {
                 let entry = entry_res?;
                 commitrefs.push(CommitRef {
                     reference: reference.name().unwrap().to_string(),
@@ -179,6 +186,10 @@ fn handle_logrefs(repo: Repository, index: Option<usize>, no_remotes : bool, no_
                 });
             }
         }
+    }
+
+    if head_name.is_some() {
+        println!("Current ref: {}", repo.head()?.shorthand().unwrap());
     }
 
     commitrefs.sort_by_key(|v| v.entry.committer.when().seconds());
@@ -191,15 +202,12 @@ fn handle_logrefs(repo: Repository, index: Option<usize>, no_remotes : bool, no_
         );
     }
 
-    let new_index_maybe =  match index
-    {
+    let new_index_maybe = match index {
         Some(index) => Some(index),
-        None => prompt_for_index(commitrefs.len())
+        None => prompt_for_index(commitrefs.len()),
     };
 
-    if let Some(new_index) = new_index_maybe
-    {
-        //println!("Checkout ({}) {}", new_index, commitrefs.get(new_index).unwrap().reference);
+    if let Some(new_index) = new_index_maybe {
         let ref_str = commitrefs.get(new_index).unwrap().reference.as_str();
         repo.checkout_tree(&repo.revparse_single(ref_str)?, None)?;
         repo.set_head(ref_str)?;
@@ -235,12 +243,14 @@ fn main() {
                         .short("i")
                         .help("branch index (in list) to change to")
                         .takes_value(true),
-                ).arg(
+                )
+                .arg(
                     Arg::with_name("no_remotes")
                         .long("no-remotes")
                         .short("r")
                         .help("Do not list remotes"),
-                ).arg(
+                )
+                .arg(
                     Arg::with_name("no_tags")
                         .long("no-tags")
                         .short("t")
@@ -259,6 +269,12 @@ fn main() {
         let index = subcmd_arguments
             .value_of("index")
             .and_then(|v| v.parse::<usize>().ok());
-        handle_logrefs(repo, index, subcmd_arguments.is_present("no_remotes"), subcmd_arguments.is_present("no_tags") ).unwrap();
+        handle_logrefs(
+            repo,
+            index,
+            subcmd_arguments.is_present("no_remotes"),
+            subcmd_arguments.is_present("no_tags"),
+        )
+        .unwrap();
     }
 }
