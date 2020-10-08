@@ -3,8 +3,8 @@
 extern crate lazy_static;
 extern crate clap;
 
-use core::cmp::min;
 use clap::{App, Arg, SubCommand};
+use core::cmp::min;
 use git2::{self, Oid, Repository, Signature, Time};
 use regex::Regex;
 use rustyline;
@@ -12,6 +12,11 @@ use rustyline;
 use std::fs::File;
 use std::io::{BufRead, BufReader, ErrorKind};
 use std::path::Path;
+
+lazy_static! {
+    static ref REFLOG_LINE_RE: Regex = Regex::new(concat!(r"^(?P<new>[0-9a-f]{40}) (?P<old>[0-9a-f]{40}) ",
+     r"(?P<name>[^<]+) <(?P<email>[^>]+)> (?P<time>[0-9]+) (?P<offset>[\+\-][0-9]{4})\t(?P<message>.*)$")).unwrap();
+}
 
 struct ParsedReflogEntry {
     id_new: Oid,
@@ -36,11 +41,6 @@ fn std_io_err_to_git_err<T>(result: Result<T, std::io::Error>) -> Result<T, git2
     })
 }
 
-lazy_static! {
-    static ref REFLOG_LINE_RE: Regex = Regex::new(concat!(r"^(?P<new>[0-9a-f]{40}) (?P<old>[0-9a-f]{40}) ",
-     r"(?P<name>[^<]+) <(?P<email>[^>]+)> (?P<time>[0-9]+) \+(?P<offset>[0-9]{4})\t(?P<message>.*)$")).unwrap();
-}
-
 fn make_reflog_error(msg: Option<String>) -> git2::Error {
     git2::Error::new(
         git2::ErrorCode::Invalid,
@@ -48,6 +48,7 @@ fn make_reflog_error(msg: Option<String>) -> git2::Error {
         msg.unwrap_or(String::from("Reflog malformed")),
     )
 }
+
 fn parse_reflog_line(
     line_result: Result<String, std::io::Error>,
 ) -> Result<ParsedReflogEntry, git2::Error> {
@@ -153,7 +154,7 @@ fn handle_logrefs(
     index: Option<usize>,
     no_remotes: bool,
     no_tags: bool,
-    max_print_refs: usize
+    max_print_refs: usize,
 ) -> Result<(), git2::Error> {
     let mut commitrefs: Vec<CommitRef> = Vec::with_capacity(repo.references()?.names().count());
     let head = repo.head()?;
@@ -280,7 +281,8 @@ fn main() {
             .and_then(|v| v.parse::<usize>().ok());
         let max_print_refs = subcmd_arguments
             .value_of("max_print_refs")
-            .and_then(|v| v.parse::<usize>().ok()).unwrap_or(20);
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(20);
 
         handle_logrefs(
             repo,
