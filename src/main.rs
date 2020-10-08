@@ -3,6 +3,7 @@
 extern crate lazy_static;
 extern crate clap;
 
+use core::cmp::min;
 use clap::{App, Arg, SubCommand};
 use git2::{self, Oid, Repository, Signature, Time};
 use regex::Regex;
@@ -152,6 +153,7 @@ fn handle_logrefs(
     index: Option<usize>,
     no_remotes: bool,
     no_tags: bool,
+    max_print_refs: usize
 ) -> Result<(), git2::Error> {
     let mut commitrefs: Vec<CommitRef> = Vec::with_capacity(repo.references()?.names().count());
     let head = repo.head()?;
@@ -194,7 +196,7 @@ fn handle_logrefs(
 
     commitrefs.sort_by_key(|v| v.entry.committer.when().seconds());
 
-    for commit_idx in 0..commitrefs.len() {
+    for commit_idx in 0..min(max_print_refs, commitrefs.len()) {
         let commitref = commitrefs.get(commit_idx).unwrap();
         println!(
             "{:03} {}: {}",
@@ -245,6 +247,13 @@ fn main() {
                         .takes_value(true),
                 )
                 .arg(
+                    Arg::with_name("max_print_refs")
+                        .long("max-print-refs")
+                        .short("m")
+                        .help("maximum number of refs to list")
+                        .takes_value(true),
+                )
+                .arg(
                     Arg::with_name("no_remotes")
                         .long("no-remotes")
                         .short("r")
@@ -269,11 +278,16 @@ fn main() {
         let index = subcmd_arguments
             .value_of("index")
             .and_then(|v| v.parse::<usize>().ok());
+        let max_print_refs = subcmd_arguments
+            .value_of("max_print_refs")
+            .and_then(|v| v.parse::<usize>().ok()).unwrap_or(20);
+
         handle_logrefs(
             repo,
             index,
             subcmd_arguments.is_present("no_remotes"),
             subcmd_arguments.is_present("no_tags"),
+            max_print_refs,
         )
         .unwrap();
     }
