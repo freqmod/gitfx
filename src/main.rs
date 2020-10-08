@@ -195,7 +195,7 @@ fn handle_logrefs(
         println!("Current ref: {}", repo.head()?.shorthand().unwrap());
     }
 
-    commitrefs.sort_by_key(|v| v.entry.committer.when().seconds());
+    commitrefs.sort_by_key(|v| v.entry.committer.when());
 
     for commit_idx in 0..min(max_print_refs, commitrefs.len()) {
         let commitref = commitrefs.get(commit_idx).unwrap();
