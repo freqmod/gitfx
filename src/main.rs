@@ -196,6 +196,7 @@ fn handle_logrefs(
     }
 
     commitrefs.sort_by_key(|v| v.entry.committer.when());
+    commitrefs.reverse();
 
     for commit_idx in 0..min(max_print_refs, commitrefs.len()) {
         let commitref = commitrefs.get(commit_idx).unwrap();
