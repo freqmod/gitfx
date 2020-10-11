@@ -1,5 +1,4 @@
 #[allow(dead_code)]
-
 use core::cmp::min;
 use git2::{self, Oid, Repository, Signature, Time};
 use regex::Regex;
@@ -8,7 +7,6 @@ use rustyline;
 use std::fs::File;
 use std::io::{BufRead, BufReader, ErrorKind};
 use std::path::Path;
-
 
 lazy_static! {
     static ref REFLOG_LINE_RE: Regex = Regex::new(concat!(r"^(?P<new>[0-9a-f]{40}) (?P<old>[0-9a-f]{40}) ",

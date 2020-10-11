@@ -57,6 +57,16 @@ fn main() {
                         .help("List tags"),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("submodsync")
+                .about("Syncronize submodules to match whats in index")
+                .arg(
+                    Arg::with_name("force_commit")
+                        .long("force-commit")
+                        .short("r")
+                        .help("Force checkout even if a newer commit is present in the submodule"),
+                ),
+        )
         .get_matches();
 
     let repo = if let Some(_git_dir) = cli_arguments.value_of("git_dir") {
@@ -82,5 +92,7 @@ fn main() {
             max_print_refs,
         )
         .unwrap();
+    } else if let Some(subcmd_arguments) = cli_arguments.subcommand_matches("submodsync") {
+        submodules::sync_submodules(&repo, subcmd_arguments.is_present("force_commit")).unwrap();
     }
 }
