@@ -11,6 +11,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, ErrorKind};
 use std::path::Path;
 
+use crate::misc::checkout;
+
 #[derive(PartialEq)]
 enum RunMode {
     All,
@@ -28,17 +30,20 @@ fn sync_submodules_inner(
             let status =
                 repo.submodule_status(submodule.name().unwrap(), SubmoduleIgnore::Unspecified)?;
 
-            /* println!(
-                "Submodule {} {:?} {:?} {:?}",
+            /*println!(
+                "Submodule {} {:?} {:?} {:?} I:{} W:{} Ww:{}",
                 submodule.name().unwrap(),
                 hex::encode(submodule.head_id().unwrap().as_bytes()),
                 hex::encode(submodule.index_id().unwrap().as_bytes()),
-                hex::encode(submodule.workdir_id().unwrap().as_bytes())
-            ); */
+                hex::encode(submodule.workdir_id().unwrap().as_bytes()),
+                status.is_in_index(),
+                status.is_wd_modified(),
+                status.is_wd_wd_modified()
+            );*/
             if !status.is_in_index()
                 || (!force_commit && (submodule.index_id() != submodule.workdir_id()))
             {
-                if status.is_wd_modified() || status.is_wd_wd_modified() {
+                if status.is_wd_wd_modified() {
                     return Err(git2::Error::new(
                         git2::ErrorCode::NotFound,
                         git2::ErrorClass::Reference,
@@ -56,15 +61,31 @@ fn sync_submodules_inner(
     for mut submodule in repo.submodules()? {
         let status =
             repo.submodule_status(submodule.name().unwrap(), SubmoduleIgnore::Unspecified)?;
-        if !(!status.is_in_index()
-            || (!force_commit && (submodule.index_id() != submodule.workdir_id())))
-        {
+
+        /*println!(
+            "Update {} {} Ix:{} Id:{}",
+            repo.path().to_str().unwrap(),
+            submodule.name().unwrap(),
+            status.is_in_index(),
+            submodule.index_id() != submodule.workdir_id()
+        );*/
+
+        if submodule.index_id() != submodule.workdir_id() {
             assert!(!status.is_wd_wd_modified());
             submodule.update(
                 false, None, // TODO: Expose any of these options on the command line?
             )?;
-            sync_submodules_inner(&submodule.open()?, RunMode::WetOnly, force_commit)?;
+            {
+                submodule.reload(true)?;
+                let inner_repo = submodule.open()?;
+
+                if submodule.index_id().unwrap() != inner_repo.head()?.resolve()?.target().unwrap()
+                {
+                    checkout(&inner_repo, &hex::encode(submodule.head_id().unwrap()))?;
+                }
+            }
         }
+        sync_submodules_inner(&submodule.open()?, RunMode::WetOnly, force_commit)?;
     }
     Ok(())
 }

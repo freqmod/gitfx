@@ -5,6 +5,7 @@ extern crate clap;
 use clap::{App, Arg, SubCommand};
 use git2::{self, Repository};
 
+mod misc;
 mod reflog;
 mod submodules;
 

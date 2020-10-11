@@ -8,6 +8,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, ErrorKind};
 use std::path::Path;
 
+use crate::misc::checkout;
+
 lazy_static! {
     static ref REFLOG_LINE_RE: Regex = Regex::new(concat!(r"^(?P<new>[0-9a-f]{40}) (?P<old>[0-9a-f]{40}) ",
      r"(?P<name>[^<]+) <(?P<email>[^>]+)> (?P<time>[0-9]+) (?P<offset>[\+\-][0-9]{4})\t(?P<message>.*)$")).unwrap();
@@ -208,8 +210,7 @@ pub fn handle_logrefs(
 
     if let Some(new_index) = new_index_maybe {
         let ref_str = commitrefs.get(new_index).unwrap().reference.as_str();
-        repo.checkout_tree(&repo.revparse_single(ref_str)?, None)?;
-        repo.set_head(ref_str)?;
+        checkout(&repo, ref_str)?;
     }
     Ok(())
 }
